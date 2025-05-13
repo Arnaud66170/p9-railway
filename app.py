@@ -1,14 +1,12 @@
 # huggingface_api/app.py
 
-
-# huggingface_api/app.py
+# app.py (version Railway)
 
 import gradio as gr
 import sys
 import os
 sys.path.append(os.path.abspath("src"))
 
-import mlflow
 import pandas as pd
 import plotly.express as px
 from collections import deque
@@ -16,14 +14,23 @@ from datetime import datetime, timedelta
 import csv
 import random
 import threading
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 
 from utils.logger import log_user_event
 from utils.alert_email import send_alert_email
 
-# === Chargement du modèle depuis le Model Registry ===
-model_uri = "models:/emotions_classifier/Production"
-# pipeline = mlflow.transformers.load_model(model_uri)
-pipeline = mlflow.transformers.load_model("models:/emotions_classifier/Production")
+# === Chargement du modèle LOCAL (ELECTRA fine-tuné) ===
+MODEL_DIR = "models/electra_model"
+model = AutoModelForSequenceClassification.from_pretrained(MODEL_DIR)
+tokenizer = AutoTokenizer.from_pretrained(MODEL_DIR)
+
+pipeline = pipeline(
+    "text-classification",
+    model=model,
+    tokenizer=tokenizer,
+    top_k=None,  # multi-label
+    function_to_apply="sigmoid"
+)
 
 # === Globals ===
 HISTORY_LIMIT = 5
@@ -34,90 +41,44 @@ FEEDBACK_ALERT_THRESHOLD = 3
 alert_history = []
 FEEDBACK_CSV = os.path.abspath("feedback_log_emotions.csv")
 
+# === Données ===
 tweet_examples = [
-    "I feel amazing today!",
-    "I'm so angry right now.",
-    "Everything is fine, just a little tired.",
-    "Why is nobody answering me?", 
-    "This is the best day of my life!",
-    "Sure, because waiting 3 hours for coffee is totally normal 😒",
-    "I miss you... but maybe it's for the best.",
-    "Finally got that promotion 🥳",
-    "Just great. Another Monday. Yay.",
-    "Thank you for ruining my day 😊",
-    "She smiled, but her eyes were empty.",
-    "I can’t take this anymore.",
-    "That’s it. I’m done. Don’t call me.",
-    "Well... that escalated quickly.",
-    "I'm so proud of you ❤️",
-    "Guess who forgot their keys again 🙄",
-    "I just want to disappear for a while.",
-    "Wow. Thanks a lot. Really helpful. 👏",
-    "I can't believe you remembered 🥺",
-    "Oh joy, another pointless meeting...",
-    "Let's pretend everything’s okay 🌪️",
-    "Honestly? I don’t even care anymore.",
-    "You’ve made my day ☀️",
-    "Love this song. Hits hard today.",
-    "So peaceful here. I could stay forever.",
-    "You always know just what to say 😌",
-    "I guess it’s whatever now 🤷",
-    "What’s the point of trying?",
-    "I laughed so hard I cried 😂",
-    "This meal is a 10/10 👌",
-    "Please don’t leave me.",
-    "I knew this would happen.",
-    "Don’t talk to me like that again.",
-    "You forgot again. Of course you did.",
-    "Oh wow, a surprise. Totally didn’t expect that 🙃",
-    "That was unexpected... and kinda sweet.",
-    "Creeped out. That guy followed me home.",
-    "Ugh. Can't stand this anymore.",
-    "So tired of pretending I'm fine.",
-    "Feeling super grateful today 🙏",
-    "Can’t stop smiling 😁",
-    "I'm proud of how far I’ve come.",
-    "Back at it again. Let’s gooo 💪",
-    "I’m trying, okay? I really am.",
-    "This is the dumbest thing ever.",
-    "You always ruin everything 😡",
-    "Missing the good old days.",
-    "Best birthday ever 🎂🎈",
-    "I'm not crying. You are 😢",
-    "Guess I should’ve seen it coming.",
+    "I feel amazing today!", "I'm so angry right now.", "Everything is fine, just a little tired.",
+    "Why is nobody answering me?", "This is the best day of my life!", "Sure, because waiting 3 hours for coffee is totally normal 🚒",
+    "I miss you... but maybe it's for the best.", "Finally got that promotion 🥳", "Just great. Another Monday. Yay.",
+    "Thank you for ruining my day 😊", "She smiled, but her eyes were empty.", "I can’t take this anymore.",
+    "That’s it. I’m done. Don’t call me.", "Well... that escalated quickly.", "I'm so proud of you ❤️",
+    "Guess who forgot their keys again 🙄", "I just want to disappear for a while.", "Wow. Thanks a lot. Really helpful. 👏",
+    "I can't believe you remembered 🥺", "Oh joy, another pointless meeting...", "Let's pretend everything’s okay 🌪️",
+    "Honestly? I don’t even care anymore.", "You’ve made my day ☀️", "Love this song. Hits hard today.",
+    "So peaceful here. I could stay forever.", "You always know just what to say 😌", "I guess it’s whatever now 🤷",
+    "What’s the point of trying?", "I laughed so hard I cried 😂", "This meal is a 10/10 👌",
+    "Please don’t leave me.", "I knew this would happen.", "Don’t talk to me like that again.",
+    "You forgot again. Of course you did.", "Oh wow, a surprise. Totally didn’t expect that 🤭",
+    "That was unexpected... and kinda sweet.", "Creeped out. That guy followed me home.", "Ugh. Can't stand this anymore.",
+    "So tired of pretending I'm fine.", "Feeling super grateful today 🙏", "Can’t stop smiling 😁",
+    "I'm proud of how far I’ve come.", "Back at it again. Let’s gooo 💪", "I’m trying, okay? I really am.",
+    "This is the dumbest thing ever.", "You always ruin everything 😡", "Missing the good old days.",
+    "Best birthday ever 🎂🎈", "I'm not crying. You are 😢", "Guess I should’ve seen it coming.",
     "No one listens. No one cares."
 ]
 
-
-# === Dictionnaire de mapping GoEmotions ===
 LABEL_MAP = {
-    "LABEL_0": "admiration", "LABEL_1": "amusement", "LABEL_2": "anger",
-    "LABEL_3": "annoyance", "LABEL_4": "approval", "LABEL_5": "caring",
-    "LABEL_6": "confusion", "LABEL_7": "curiosity", "LABEL_8": "desire",
-    "LABEL_9": "disappointment", "LABEL_10": "disapproval", "LABEL_11": "disgust",
-    "LABEL_12": "embarrassment", "LABEL_13": "excitement", "LABEL_14": "fear",
-    "LABEL_15": "gratitude", "LABEL_16": "grief", "LABEL_17": "joy",
-    "LABEL_18": "love", "LABEL_19": "nervousness", "LABEL_20": "optimism",
-    "LABEL_21": "pride", "LABEL_22": "realization", "LABEL_23": "relief",
-    "LABEL_24": "remorse", "LABEL_25": "sadness", "LABEL_26": "surprise",
-    "LABEL_27": "neutral"
+    f"LABEL_{i}": label for i, label in enumerate([
+        "admiration", "amusement", "anger", "annoyance", "approval", "caring", "confusion", "curiosity",
+        "desire", "disappointment", "disapproval", "disgust", "embarrassment", "excitement", "fear",
+        "gratitude", "grief", "joy", "love", "nervousness", "optimism", "pride", "realization", "relief",
+        "remorse", "sadness", "surprise", "neutral"
+    ])
 }
 
-# === Fonction de prédiction ===
+# === Fonctions ===
 def predict_emotions(text):
     outputs = pipeline(text)
-    print("🔍 pipeline raw output:", outputs)
+    print("\U0001f50d pipeline raw output:", outputs)
 
-    # Gérer différents formats de sortie
     if isinstance(outputs, list):
-        if isinstance(outputs[0], list):
-            # Cas [[{'label': ..., 'score': ...}, ...]]
-            emotion_scores = outputs[0]
-        elif isinstance(outputs[0], dict):
-            # Cas [{'label': ..., 'score': ...}, ...]
-            emotion_scores = outputs
-        else:
-            return "❌ Format de sortie non reconnu.", None, None
+        emotion_scores = outputs[0] if isinstance(outputs[0], list) else outputs
     else:
         return "❌ Sortie invalide du pipeline.", None, None
 
@@ -128,8 +89,6 @@ def predict_emotions(text):
 
     return f"<h2 style='text-align:center;'>🧠 Emotion dominante : {label_readable.capitalize()} ({round(dominant['score']*100)}%)</h2>", update_pie_chart(), update_history()
 
-
-# === Graphe en camembert ===
 def update_pie_chart():
     emotions = [h['emotion'] for h in history]
     df = pd.DataFrame(emotions, columns=['emotion'])
@@ -137,21 +96,16 @@ def update_pie_chart():
         return px.pie(names=[], values=[])
     counts = df['emotion'].value_counts().reset_index()
     counts.columns = ['Emotion', 'Count']
-    fig = px.pie(counts, names='Emotion', values='Count', title='Distribution des émotions récentes')
-    return fig
+    return px.pie(counts, names='Emotion', values='Count', title='Distribution des émotions récentes')
 
-# === Historique ===
 def update_history():
     df = pd.DataFrame(list(history))
-    if not df.empty:
-        return df.rename(columns={"text": "Tweet", "emotion": "Emotion", "score": "Confiance (%)"})
-    return pd.DataFrame(columns=["Tweet", "Emotion", "Confiance (%)"])
+    return df.rename(columns={"text": "Tweet", "emotion": "Emotion", "score": "Confiance (%)"}) if not df.empty else pd.DataFrame(columns=["Tweet", "Emotion", "Confiance (%)"])
 
-# === Feedback ===
 def save_feedback(tweet, feedback, comment):
     if not history:
         return "❌ Aucun historique disponible.", ""
-    
+
     last = history[0]
     emotion = last["emotion"]
     confidence = last["score"]
@@ -234,6 +188,7 @@ with gr.Blocks() as demo:
 
 if __name__ == "__main__":
     demo.launch()
+
 
 # Appel script:
 # python huggingface_api/app.py
