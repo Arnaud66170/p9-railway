@@ -198,7 +198,7 @@ with gr.Blocks() as demo:
     gen_button.click(fn=download_emotion_stats, outputs=download_btn)
 
 if __name__ == "__main__":
-    demo.launch()
+    demo.launch(server_name="0.0.0.0", server_port=int(os.environ.get("PORT", 10000)))
 
 
 # Appel script:
