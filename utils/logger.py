@@ -4,6 +4,10 @@ import os
 import pandas as pd
 from datetime import datetime
 
+# Récupération du dossier de logs via variable d'environnement (ou fallback par défaut)
+LOG_DIR = os.environ.get("LOG_DIR", "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
 def log_user_event(event_type, tweet_text, predicted_label, proba, feedback=None, comment=None):
     """
     Enregistre un événement utilisateur dans un fichier CSV.
@@ -16,11 +20,8 @@ def log_user_event(event_type, tweet_text, predicted_label, proba, feedback=None
         feedback (str|None): Feedback utilisateur (👍 Yes / 👎 No)
         comment (str|None): Commentaire libre de l'utilisateur
     """
-    log_dir = "huggingface_api/logs"
-    os.makedirs(log_dir, exist_ok=True)
-
     log_file = os.path.join(
-        log_dir,
+        LOG_DIR,
         "log_feedbacks.csv" if event_type == "feedback" else "log_analysis.csv"
     )
 

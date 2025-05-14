@@ -1,58 +1,33 @@
----
-title: Détection des émotions – Projet P9
-emoji: 🧠
-colorFrom: indigo
-colorTo: green
-sdk: gradio
-sdk_version: "3.50.2"
-app_file: app.py
-pinned: false
----
+# P9_V2 – Analyse d’Émotions avec ELECTRA (Gradio App)
 
-# 🧠 Détection des émotions (Projet P9 – OpenClassrooms)
+Cette application permet de détecter les émotions principales dans un texte court (ex : tweet) à l’aide d’un modèle **ELECTRA fine-tuné sur GoEmotions**.
 
-Cette application Gradio permet d’analyser les émotions présentes dans des tweets ou messages courts.  
-Elle repose sur un modèle **ELECTRA-small** fine-tuné sur le dataset **GoEmotions** (Google Research), couvrant **28 étiquettes émotionnelles multi-label**.
+Interface déployée avec **Gradio**, prête à l’usage sur Render.
 
 ---
 
-## ✨ Fonctionnalités principales
+## Fonctionnalités
 
-- 🔍 Prédiction multi-émotion (sigmoid) avec scores de confiance
-- 📊 Visualisation dynamique : camembert, historique des 5 derniers tweets
-- 🧾 Journalisation automatique (analyses + feedbacks)
-- 📩 Feedback utilisateur (👍 / 👎) + commentaires
-- ⚠️ Alerte mail automatique si 3 feedbacks négatifs en moins de 5 min
-- 🗂️ Téléchargement des prédictions au format CSV
-
----
-
-## 🔬 Modèle utilisé
-
-- **Architecture** : ELECTRA-small discriminator
-- **Type** : Transformer optimisé
-- **Tâche** : `text-classification` multi-label (activation `sigmoid`)
-- **Dataset** : [GoEmotions](https://github.com/google-research/google-research/tree/master/goemotions)
-- **Nombre de labels** : 28 émotions + neutre
+- ✅ Prédiction multi-label d’émotions (28 classes + neutral)
+- ✅ Affichage de l’émotion dominante + score de confiance
+- ✅ Historique des 5 dernières analyses
+- ✅ Graphique circulaire (camembert) des émotions récentes
+- ✅ Feedback utilisateur (👍/👎 + commentaire)
+- ✅ Journalisation CSV (log_analysis, log_feedbacks)
+- ✅ Système d’alerte e-mail si 3 feedbacks négatifs en <5 minutes
+- ✅ Export des logs via bouton de téléchargement
 
 ---
 
-## 🛠️ Informations projet
+## Structure du projet (résumé)
 
-- Projet réalisé dans le cadre de la formation **Data Scientist – OpenClassrooms**
-- Ce projet P9 est une **amélioration du projet P7**, basé initialement sur TF-IDF + Logistic Regression
-- Code complet et modularisé : `huggingface_api/`, `src/`, `scripts/`
-
----
-
-## 🚀 Déployé avec :
-- Gradio (interface utilisateur)
-- Hugging Face Spaces
-- MLflow (Model Registry + suivi des versions)
-- Entraînement local avec GPU (GTX 1060)
-
----
-
-➡️ Retrouvez le code complet dans le projet : `P9_V2`  
-📂 [GitHub / Hugging Face à venir]
+├── huggingface_space/
+│ ├── app.py # Interface Gradio
+│ ├── requirements.txt # Dépendances
+│ ├── models/electra_model/ # Modèle ELECTRA fine-tuné
+├── src/
+│ └── utils/
+│ ├── logger.py # Gestion des logs CSV
+│ └── alert_email.py # Microservice d’alerte (Railway ou SendGrid)
+├── render.yaml # Déploiement Render (automatisé)
 

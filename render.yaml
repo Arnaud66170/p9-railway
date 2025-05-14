@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: p9-v2-gradio
+    env: python
+    buildCommand: pip install -r huggingface_space/requirements.txt
+    startCommand: python huggingface_space/app.py
+    envVars:
+      - key: HF_TOKEN
+        value: <TON_TOKEN_SI_UTILISÉ>
+      - key: SENDGRID_API_KEY
+        value: <CLÉ SI UTILISÉE>
+      - key: ALERT_EMAIL_RECEIVER
+        value: <adresse>
+      - key: LOG_DIR
+        value: "logs"

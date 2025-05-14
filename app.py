@@ -1,6 +1,4 @@
-# huggingface_api/app.py
-
-# app.py (version Railway)
+# huggingface_api/app.py (version Railway)
 
 import gradio as gr
 import sys
@@ -16,7 +14,7 @@ import random
 import threading
 from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
 
-from utils.logger import log_user_event
+from utils.logger import log_user_event, LOG_DIR
 from utils.alert_email import send_alert_email
 
 # === Chargement du modèle LOCAL (ELECTRA fine-tuné) ===
@@ -28,7 +26,7 @@ pipeline = pipeline(
     "text-classification",
     model=model,
     tokenizer=tokenizer,
-    top_k=None,  # multi-label
+    top_k=None,
     function_to_apply="sigmoid"
 )
 
@@ -39,7 +37,9 @@ ALERT_WINDOW_MINUTES = 5
 ALERT_COOLDOWN_MINUTES = 10
 FEEDBACK_ALERT_THRESHOLD = 3
 alert_history = []
-FEEDBACK_CSV = os.path.abspath("feedback_log_emotions.csv")
+
+# === Données ===
+tweet_examples = [...]  # inchangé pour lisibilité ici
 
 # === Données ===
 tweet_examples = [
@@ -75,8 +75,6 @@ LABEL_MAP = {
 # === Fonctions ===
 def predict_emotions(text):
     outputs = pipeline(text)
-    print("\U0001f50d pipeline raw output:", outputs)
-
     if isinstance(outputs, list):
         emotion_scores = outputs[0] if isinstance(outputs[0], list) else outputs
     else:
@@ -85,7 +83,7 @@ def predict_emotions(text):
     sorted_emotions = sorted(emotion_scores, key=lambda x: x['score'], reverse=True)
     dominant = sorted_emotions[0]
     label_readable = LABEL_MAP.get(dominant['label'], dominant['label'])
-    history.appendleft({"text": text, "emotion": label_readable, "score": round(dominant['score']*100, 2)})
+    history.appendleft({"text": text, "emotion": label_readable, "score": round(dominant['score'] * 100, 2)})
 
     return f"<h2 style='text-align:center;'>🧠 Emotion dominante : {label_readable.capitalize()} ({round(dominant['score']*100)}%)</h2>", update_pie_chart(), update_history()
 
@@ -110,26 +108,32 @@ def save_feedback(tweet, feedback, comment):
     emotion = last["emotion"]
     confidence = last["score"]
     timestamp = datetime.now()
-    row = {
-        "tweet": tweet,
-        "predicted_emotion": emotion,
-        "proba": confidence,
-        "user_feedback": feedback,
-        "comment": comment,
-        "timestamp": timestamp.isoformat()
-    }
+
+    # Log CSV local
     try:
-        file_exists = os.path.exists(FEEDBACK_CSV)
-        with open(FEEDBACK_CSV, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.DictWriter(f, fieldnames=row.keys())
+        feedback_log = os.path.join(LOG_DIR, "log_feedbacks.csv")
+        file_exists = os.path.exists(feedback_log)
+        with open(feedback_log, mode='a', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=[
+                "tweet", "predicted_emotion", "proba", "user_feedback", "comment", "timestamp"
+            ])
             if not file_exists:
                 writer.writeheader()
-            writer.writerow(row)
+            writer.writerow({
+                "tweet": tweet,
+                "predicted_emotion": emotion,
+                "proba": confidence,
+                "user_feedback": feedback,
+                "comment": comment,
+                "timestamp": timestamp.isoformat()
+            })
     except Exception as e:
         print(f"Erreur CSV : {e}")
 
+    # Log structuré
     log_user_event("feedback", tweet_text=tweet, predicted_label=emotion, proba=confidence, feedback=feedback, comment=comment)
 
+    # Gestion des alertes e-mail
     if feedback == "👎 No":
         alert_history.append(timestamp)
         now = datetime.now()
@@ -143,10 +147,11 @@ def save_feedback(tweet, feedback, comment):
     return "✅ Feedback enregistré.", update_feedback_stats()
 
 def update_feedback_stats():
-    if not os.path.exists(FEEDBACK_CSV):
+    feedback_log = os.path.join(LOG_DIR, "log_feedbacks.csv")
+    if not os.path.exists(feedback_log):
         return "Aucun feedback encore."
     try:
-        df = pd.read_csv(FEEDBACK_CSV)
+        df = pd.read_csv(feedback_log)
         count_yes = (df['user_feedback'] == '👍 Yes').sum()
         count_no = (df['user_feedback'] == '👎 No').sum()
         return f"👍 Yes: {count_yes} | 👎 No: {count_no} | Total: {len(df)}"
@@ -154,14 +159,21 @@ def update_feedback_stats():
         return "Erreur lecture stats."
 
 def download_emotion_stats():
-    csv_path = "outputs/emotion_stats_2000.csv"
-    return csv_path if os.path.exists(csv_path) else None
+    # Copie de log_analysis.csv dans un fichier d’export temporaire
+    analysis_path = os.path.join(LOG_DIR, "log_analysis.csv")
+    export_path = os.path.join(LOG_DIR, "emotion_stats_export.csv")
+    if os.path.exists(analysis_path):
+        try:
+            df = pd.read_csv(analysis_path)
+            df.to_csv(export_path, index=False)
+            return export_path
+        except:
+            return None
+    return None
 
 # === Interface Gradio ===
 with gr.Blocks() as demo:
-    gr.Markdown("""
-    # 😶‍🌫️ Analyse des émotions (tweets)
-    """)
+    gr.Markdown("# 😶‍🌫️ Analyse des émotions (tweets)")
     with gr.Row():
         tweet_input = gr.Textbox(label="💬 Tweet", lines=3)
         example_btn = gr.Button("🎲 Exemple aléatoire")
@@ -180,7 +192,6 @@ with gr.Blocks() as demo:
         gen_button = gr.Button("📤 Télécharger CSV émotions")
         download_btn = gr.File(label="Fichier CSV", interactive=True)
 
-    # === Actions ===
     analyze_btn.click(fn=predict_emotions, inputs=tweet_input, outputs=[sentiment_output, pie_plot, history_display])
     example_btn.click(fn=lambda: random.choice(tweet_examples), outputs=tweet_input)
     feedback_btn.click(fn=save_feedback, inputs=[tweet_input, feedback, comment], outputs=[feedback_status, feedback_stats])
