@@ -4,3 +4,4 @@ __pycache__/
 *.pkl
 *.safetensors
 *.bin
+!models/electra_model/pytorch_model.bin
